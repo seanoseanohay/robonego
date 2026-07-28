@@ -1,6 +1,6 @@
-# robotneg
+# robonego
 
-`robotneg` removes you from the middle of a picky PR review loop.
+`robonego` removes you from the middle of a picky PR review loop.
 
 The local MVP runs two Codex-backed roles against a PR or local diff:
 
