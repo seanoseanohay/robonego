@@ -2,31 +2,113 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import type { ReviewContext } from "../types/models.js";
+import { collectProcessHints, formatProcessHintsForMetadata } from "./processHints.js";
 
 const MAX_UNTRACKED_FILES = 25;
 const MAX_UNTRACKED_CHARS = 80_000;
 const MAX_UNTRACKED_FILE_CHARS = 20_000;
+const MAX_DIFF_CHARS = 400_000;
+
+const PR_VIEW_FIELDS = [
+  "number",
+  "title",
+  "body",
+  "author",
+  "baseRefName",
+  "headRefName",
+  "url",
+  "files",
+  "additions",
+  "deletions",
+  "isDraft",
+  "mergeable",
+  "mergeStateStatus",
+  "reviewDecision",
+  "state",
+  "statusCheckRollup"
+].join(",");
 
 export async function collectContext(repoInput: string, target: string | undefined, base: string): Promise<ReviewContext> {
   const repo = path.resolve(repoInput);
   if (target) {
-    const metadata = await runRequired(
+    const metadataRaw = await runRequired(
       "gh",
-      ["pr", "view", target, "--json", "title,body,author,baseRefName,headRefName,url"],
+      ["pr", "view", target, "--json", PR_VIEW_FIELDS],
       repo
     );
-    const diff = await runRequired("gh", ["pr", "diff", target], repo);
-    return { repo, target, metadata, diff };
+    const process = await collectProcessHints(repo, target, metadataRaw);
+    const metadata = enrichMetadata(metadataRaw, process);
+    const changedFiles = await runRequired("gh", ["pr", "diff", target, "--name-only"], repo);
+    let diff = await runRequired("gh", ["pr", "diff", target], repo);
+    diff = truncate(diff, MAX_DIFF_CHARS, "\n[diff truncated by robotneg]\n");
+    let prBase = base;
+    try {
+      const parsed = JSON.parse(metadataRaw) as { baseRefName?: string };
+      if (parsed.baseRefName) {
+        prBase = parsed.baseRefName;
+      }
+    } catch {
+      // keep requested base
+    }
+    return { repo, target, metadata, diff, changedFiles, base: prBase, process };
   }
 
+  return collectLocalContext(repo, `local diff against ${base}`, base);
+}
+
+function enrichMetadata(metadataRaw: string, process: Awaited<ReturnType<typeof collectProcessHints>>): string {
+  return [
+    metadataRaw,
+    "",
+    "--- robotneg process hints ---",
+    formatProcessHintsForMetadata(process)
+  ].join("\n");
+}
+
+/**
+ * Re-collect after --fix mutations so the next critic sees local edits.
+ * Keeps original PR target/metadata when provided; rebuilds diff from the worktree.
+ */
+export async function refreshContextAfterFix(ctx: ReviewContext): Promise<ReviewContext> {
+  const base = ctx.base ?? "main";
+  const local = await collectLocalContext(ctx.repo, ctx.target, base);
+  return {
+    ...local,
+    target: ctx.target,
+    metadata: `${ctx.metadata}\n\n[robotneg] context refreshed from local worktree after implementer (--fix).`,
+    base,
+    process: ctx.process
+  };
+}
+
+async function collectLocalContext(repo: string, target: string, base: string): Promise<ReviewContext> {
   const metadata = await runRequired("git", ["status", "--short", "--branch"], repo);
+  const nameOnlyTracked = (await run("git", ["diff", "--name-only", `${base}...HEAD`], repo)).stdout.trim();
+  const nameOnlyWorktree = (await run("git", ["diff", "--name-only"], repo)).stdout.trim();
+  const nameOnlyStaged = (await run("git", ["diff", "--cached", "--name-only"], repo)).stdout.trim();
+  const changedFiles = [...new Set(
+    [...nameOnlyTracked.split("\n"), ...nameOnlyWorktree.split("\n"), ...nameOnlyStaged.split("\n")]
+      .map((l) => l.trim())
+      .filter(Boolean)
+  )].join("\n");
+
   const parts = [
     await baseDiff(repo, base),
     await trackedWorktreeContext(repo),
     await untrackedContext(repo)
   ].filter((part) => part.trim().length > 0);
 
-  return { repo, target: `local diff against ${base}`, metadata, diff: parts.join("\n\n") };
+  let diff = parts.join("\n\n");
+  diff = truncate(diff, MAX_DIFF_CHARS, "\n[diff truncated by robotneg]\n");
+
+  return {
+    repo,
+    target,
+    metadata,
+    diff,
+    changedFiles,
+    base
+  };
 }
 
 export async function baseDiff(repo: string, base: string): Promise<string> {
@@ -106,6 +188,13 @@ export async function untrackedContext(repo: string): Promise<string> {
     sections.push(`\nOmitted ${omittedFiles} untracked file(s) after context budget was reached.`);
   }
   return sections.join("\n");
+}
+
+function truncate(text: string, max: number, suffix: string): string {
+  if (text.length <= max) {
+    return text;
+  }
+  return text.slice(0, Math.max(0, max - suffix.length)) + suffix;
 }
 
 async function hasHead(repo: string): Promise<boolean> {

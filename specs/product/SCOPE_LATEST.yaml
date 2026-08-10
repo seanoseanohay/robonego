@@ -1,53 +1,45 @@
-feature_name: robotneg local negotiation MVP
+feature_name: robotneg brutal multi-round negotiation
 core_value: >
-  Remove the human middleman from adversarial PR review loops by letting two
-  Codex-backed agents negotiate locally and produce a final Markdown decision
-  report.
+  Match a manual "Codex + brutal reviewer skill" bar for PR review, then use a
+  skeptical judge and sticky per-role memory so humans leave the middleman seat.
 summary: >
-  robotneg accepts a GitHub PR URL, PR number, or local diff context, runs a
-  bounded negotiation between a picky critic and a skeptical judge, and writes a
-  Markdown report describing what should happen next. Both agents may inspect the
-  target repository through Codex in read-only mode.
+  robotneg accepts a GitHub PR URL, PR number, or local diff, runs a bounded
+  negotiation between a brutal critic (reviewer-skill bar) and a claim-skeptical
+  judge, keeps sticky per-role memory across rounds, and writes a Markdown
+  decision report. Workers are Codex CLI read-only.
 
-  The MVP is local-only. It does not apply patches, post GitHub comments, or
-  mutate the reviewed repository. The design keeps those capabilities as later
-  pluggable sinks/actions.
+  Opt-in guarded Implementer (--fix) can apply before_merge accepts between
+  rounds; default remains review-only. GitHub posting still deferred.
 in_scope:
-  - id: mvp-input
-    description: Accept PR URL, PR number, or current local branch diff.
-  - id: mvp-context
-    description: Gather PR metadata and diff text for deterministic review context.
-  - id: mvp-agents
-    description: Run Codex-backed critic and judge roles with shared repository visibility.
-  - id: mvp-negotiation
-    description: Iterate for a bounded number of rounds until agreement, no material change, or escalation.
-  - id: mvp-output
-    description: Write a local Markdown report with the top-line outcome first.
-  - id: mvp-extensibility
-    description: Keep role prompts, report rendering, and future actions separable.
+  - id: brutal-critic
+    description: Critic prompt mirrors high-rigor reviewer skill (bugs over nits).
+  - id: calibrated-judge
+    description: Judge keeps evidenced high-severity findings; rejects noise.
+  - id: sticky-memory
+    description: Per-role memory files across rounds under state-dir.
+  - id: multi-round
+    description: Real multi-round refine loop until clean or max rounds.
+  - id: pr-context
+    description: PR metadata, changed file list, and diff for workers.
+  - id: report
+    description: Markdown outcome + JSON artifact.
+  - id: guarded-fix
+    description: >
+      Opt-in --fix Implementer with hard guards (never not_this_pr, default
+      before_merge only, confidence floor, max fixes, re-review after apply).
 out_of_scope:
-  - id: auto-fix
-    description: Applying code changes is deferred until report quality is proven.
-    reason: Mutation requires stronger safety gates and rollback behavior.
   - id: github-posting
-    description: Posting PR comments or reviews is deferred.
-    reason: Local Markdown lets the negotiation policy mature before public side effects.
-  - id: hosted-service
-    description: No server, database, dashboard, auth, or multi-user state.
-    reason: The first wedge is a personal local workflow.
+    description: Posting PR comments deferred.
   - id: pi-base
-    description: Do not depend on Pi for the MVP.
-    reason: Codex CLI already exists locally and matches the subscription requirement.
+    description: No Pi dependency required.
+    reason: Codex CLI is the worker; orchestration stays local and small.
 constraints:
   runtime: Local CLI.
-  model_access: Use the authenticated local Codex CLI rather than direct API keys.
-  safety: Run Codex workers read-only for MVP.
-  persistence: Store reports and raw negotiation artifacts on disk.
+  model_access: Authenticated local Codex CLI.
+  safety: Critic/Judge read-only; Implementer workspace-write only under --fix guards.
+  persistence: Reports + sticky memory on disk.
 success_criteria:
-  - Running robotneg against a PR creates one Markdown report.
-  - The report starts with "GOOD TO MERGE", "CHANGES NEEDED", or "HUMAN REVIEW REQUIRED".
-  - Accepted findings include evidence, rationale, and concrete next action.
-  - Rejected findings explain why they should not be acted on.
-  - Unresolved findings explicitly say when the human is required.
-references:
-  - https://github.com/seanoseanohay/robotneg
+  - Critic findings quality approaches manual brutal $reviewer on same PR.
+  - Judge does not systematically erase evidenced blocker/major items.
+  - Multi-round uses sticky memory and refine set for open items.
+  - Report leads with GOOD TO MERGE / CHANGES NEEDED / HUMAN REVIEW REQUIRED.

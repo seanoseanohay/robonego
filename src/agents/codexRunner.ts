@@ -11,14 +11,28 @@ export class CodexError extends Error {
   }
 }
 
+export type CodexSandbox = "read-only" | "workspace-write" | "danger-full-access";
+
+export interface RunCodexJsonOptions {
+  model?: string;
+  timeoutMs?: number;
+  /** Default read-only. Use workspace-write only for Implementer (--fix). */
+  sandbox?: CodexSandbox;
+}
+
 export async function runCodexJson<T>(
   repo: string,
   prompt: string,
   jsonSchema: unknown,
   validator: z.ZodType<T>,
-  model?: string,
-  timeoutMs = 300_000
+  modelOrOptions?: string | RunCodexJsonOptions,
+  timeoutMsLegacy = 600_000
 ): Promise<T> {
+  const options: RunCodexJsonOptions =
+    typeof modelOrOptions === "string" || modelOrOptions === undefined
+      ? { model: modelOrOptions, timeoutMs: timeoutMsLegacy, sandbox: "read-only" }
+      : { sandbox: "read-only", ...modelOrOptions };
+
   const tempDir = await mkdtemp(path.join(tmpdir(), "robotneg-"));
   const schemaPath = path.join(tempDir, "schema.json");
   const outputPath = path.join(tempDir, "out.json");
@@ -26,12 +40,13 @@ export async function runCodexJson<T>(
   try {
     await writeFile(schemaPath, JSON.stringify(jsonSchema, null, 2), "utf8");
 
+    const sandbox = options.sandbox ?? "read-only";
     const args = [
       "exec",
       "--cd",
       repo,
       "--sandbox",
-      "read-only",
+      sandbox,
       "--output-schema",
       schemaPath,
       "--output-last-message",
@@ -39,12 +54,23 @@ export async function runCodexJson<T>(
       "--color",
       "never"
     ];
-    if (model) {
-      args.push("--model", model);
+    // Non-interactive write path: do not prompt for workspace edits.
+    // Keeps sandbox (unlike --dangerously-bypass-approvals-and-sandbox).
+    if (sandbox === "workspace-write") {
+      args.push("-c", "approval_policy=never");
+    }
+    if (options.model) {
+      args.push("--model", options.model);
     }
     args.push("-");
 
-    const result = await runProcess("codex", args, repo, prompt, timeoutMs);
+    const result = await runProcess(
+      "codex",
+      args,
+      repo,
+      prompt,
+      options.timeoutMs ?? 600_000
+    );
     if (result.code !== 0) {
       throw new CodexError(
         `Codex worker failed\ncommand: codex ${args.join(" ")}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`
