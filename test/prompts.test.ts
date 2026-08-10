@@ -82,8 +82,8 @@ test("judge prompt preserves UI, thermo structure, and not_this_pr", () => {
 
 test("critic buckets say only before_merge holds negotiation", () => {
   const prompt = criticPrompt(ctx);
-  assert.match(prompt, /do NOT hold negotiation|does NOT hold|never holds merge/i);
-  assert.match(prompt, /only treats before_merge/i);
+  assert.match(prompt, /does NOT hold negotiation|never holds merge/i);
+  assert.match(prompt, /only before_merge holds merge\/negotiation/i);
 });
 
 test("untrusted payload cannot close block", () => {
