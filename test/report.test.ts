@@ -33,7 +33,7 @@ test("human review required is a valid first line", () => {
   assert.equal(report.startsWith("# HUMAN REVIEW REQUIRED\n"), true);
 });
 
-test("go/no-go board and checklists separate blockers from backlog", () => {
+test("go/no-go board and checklists separate blockers from future work", () => {
   const ctx: ReviewContext = { repo: ".", target: "pr", metadata: "", diff: "" };
   const accepted: PartitionedFinding[] = [
     finding("correctness-F1", "before_merge", "major", "false empty state"),
@@ -53,16 +53,34 @@ test("go/no-go board and checklists separate blockers from backlog", () => {
   const report = renderReport(ctx, result);
 
   assert.match(report, /## Go \/ no-go/);
-  assert.match(report, /\*\*Before merge \(blocks PR\)\*\* \| \*\*1\*\*/);
-  assert.match(report, /Not this PR \(file separately\) \| 1/);
-  assert.match(report, /### Required before push/);
+  assert.match(report, /Blocks negotiation.*before_merge.*\*\*1\*\*/s);
+  assert.match(report, /Holds merge\?/);
+  assert.match(report, /Future work — not this PR \| 1 \| no/);
+  assert.match(report, /### Holds negotiation — required before merge/);
   assert.match(report, /correctness-F1/);
-  assert.match(report, /### File separately — do not block this PR/);
+  assert.match(report, /### Future work — does \*\*not\*\* hold negotiation/);
   assert.match(report, /contracts-F2/);
-  assert.match(report, /Before merge — blocks this PR/);
-  assert.match(report, /Appendix: role memory|Findings that stand/);
-  // Must not bury the only signal as a single not_this_pr accept
+  assert.match(report, /Blocks negotiation \(must address before merge\)/);
+  assert.match(report, /Future work \(does \*\*not\*\* hold negotiation\)/);
   assert.match(report, /false empty state/);
+  // Future work must not be framed as required before push
+  assert.doesNotMatch(report, /### Required before push/);
+});
+
+test("report with only future work can still be good_to_merge shape", () => {
+  const ctx: ReviewContext = { repo: ".", target: "pr", metadata: "", diff: "" };
+  const report = renderReport(ctx, {
+    outcome: "good_to_merge",
+    summary: "only backlog",
+    rounds: [],
+    accepted: [finding("contracts-F2", "not_this_pr", "major", "old authz debt")],
+    rejected: [],
+    unresolved: []
+  });
+  assert.match(report, /GOOD TO MERGE/);
+  assert.match(report, /Future work total \| 1 \| no/);
+  assert.match(report, /None — negotiation is clear on blockers/);
+  assert.match(report, /old authz debt/);
 });
 
 test("synthesizeDecisionSummary counts all buckets not just last judge", () => {
@@ -74,9 +92,10 @@ test("synthesizeDecisionSummary counts all buckets not just last judge", () => {
     ],
     0
   );
-  assert.match(summary, /before_merge=1/);
+  assert.match(summary, /before_merge\)=1|before_merge=1|blockers \(before_merge\)=1/);
   assert.match(summary, /not_this_pr=1/);
-  assert.match(summary, /Before merge: correctness-F1/);
+  assert.match(summary, /Blockers: correctness-F1/);
+  assert.match(summary, /future work does not/i);
   assert.match(summary, /Last judge note/);
 });
 

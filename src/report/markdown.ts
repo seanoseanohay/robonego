@@ -9,11 +9,14 @@ import type {
 
 const BUCKET_ORDER: FindingBucket[] = ["before_merge", "worth_fixing", "optional", "not_this_pr"];
 
+/** Buckets that do NOT hold merge / negotiation */
+const FUTURE_WORK_BUCKETS: FindingBucket[] = ["worth_fixing", "optional", "not_this_pr"];
+
 const BUCKET_TITLE: Record<FindingBucket, string> = {
-  before_merge: "Before merge — blocks this PR",
-  worth_fixing: "Worth fixing here (recommended, not thermo-blocking alone)",
-  optional: "Optional polish",
-  not_this_pr: "Not this PR — file separately (do not block merge)"
+  before_merge: "Blocks negotiation — must fix before merge",
+  worth_fixing: "Future work — same area, does not block merge",
+  optional: "Future work — optional polish (does not block merge)",
+  not_this_pr: "Future work — file separately (does not block merge)"
 };
 
 export async function writeReport(ctx: ReviewContext, result: NegotiationResult, outDirInput: string): Promise<string> {
@@ -74,9 +77,38 @@ export function renderReport(ctx: ReviewContext, result: NegotiationResult): str
     ""
   );
 
-  // Primary decision body: bucketed accepted findings (cumulative across rounds)
-  lines.push(...renderBucketed("Findings that stand (accepted)", result.accepted));
+  // Split accepted findings: blockers vs future work (future work never holds negotiation)
+  const blocking = result.accepted.filter(
+    (a) => "bucket" in a.finding && a.finding.bucket === "before_merge"
+  );
+  const futureWork = result.accepted.filter(
+    (a) =>
+      "bucket" in a.finding &&
+      a.finding.bucket &&
+      FUTURE_WORK_BUCKETS.includes(a.finding.bucket)
+  );
+  const uncategorized = result.accepted.filter(
+    (a) => !("bucket" in a.finding) || !a.finding.bucket
+  );
+
+  lines.push(
+    ...renderBucketed(
+      "Blocks negotiation (must address before merge)",
+      blocking,
+      "These findings hold the review. Fix or explicitly re-bucket with human agreement."
+    )
+  );
   lines.push(...section("Unresolved (revise / human) — still open", result.unresolved));
+  lines.push(
+    ...renderBucketed(
+      "Future work (does **not** hold negotiation)",
+      futureWork,
+      "Real issues, accepted as valid. Record for later — do **not** block merge or keep negotiating over them unless the team promotes one to before_merge."
+    )
+  );
+  if (uncategorized.length > 0) {
+    lines.push(...section("Uncategorized accepted findings", uncategorized));
+  }
   lines.push(...section("Rejected findings", result.rejected));
 
   lines.push(...renderImplementerSummary(result));
@@ -142,33 +174,37 @@ export function renderDecisionBox(
   const backlog = counts.not_this_pr ?? 0;
   const open = result.unresolved.length;
 
+  const futureTotal = worth + optional + backlog;
   const board = [
     "## Go / no-go",
     "",
-    `| Signal | Count |`,
-    `|--------|------:|`,
-    `| **Before merge (blocks PR)** | **${before}** |`,
-    `| Worth fixing here | ${worth} |`,
-    `| Optional polish | ${optional} |`,
-    `| Not this PR (file separately) | ${backlog} |`,
-    `| Unresolved / human | ${open} |`,
+    `_Only **Blocks negotiation** and **Unresolved** hold merge. Future work is recorded, not blocking._`,
+    "",
+    `| Signal | Count | Holds merge? |`,
+    `|--------|------:|:------------:|`,
+    `| **Blocks negotiation** (\`before_merge\`) | **${before}** | **yes** |`,
+    `| Unresolved / human | **${open}** | **yes** |`,
+    `| Future work — worth fixing | ${worth} | no |`,
+    `| Future work — optional | ${optional} | no |`,
+    `| Future work — not this PR | ${backlog} | no |`,
+    `| Future work total | ${futureTotal} | no |`,
     ""
   ];
 
   if (result.outcome === "good_to_merge") {
     board.push(
-      "**Decision:** No accepted before-merge or worth-fixing blockers remain. Optional polish and not-this-PR items do not block merge.",
+      "**Decision:** No negotiation blockers. Future-work items (if any) do **not** hold merge — file or schedule them separately.",
       ""
     );
   } else if (result.outcome === "needs_human") {
     board.push(
-      "**Decision:** Human input needed on unresolved items before merge.",
+      "**Decision:** Human input needed on unresolved items before merge. Future work still does not block by itself.",
       ""
     );
   } else {
     board.push(
-      "**Decision:** Do **not** merge until before-merge items are fixed (and consider worth-fixing).",
-      "Do **not** block this PR on not-this-PR backlog items — file them separately.",
+      "**Decision:** Do **not** merge until **Blocks negotiation** items are fixed.",
+      "Future work (worth fixing / optional / not this PR) must **not** hold negotiation — track as follow-up.",
       ""
     );
   }
@@ -212,16 +248,22 @@ function renderProcessSection(ctx: ReviewContext): string[] {
 
 function renderGoNoGoChecklist(result: NegotiationResult): string[] {
   const byBucket = groupByBucket(result.accepted);
-  const lines: string[] = ["## Action checklist", ""];
+  const lines: string[] = [
+    "## Action checklist",
+    "",
+    "### Holds negotiation — required before merge",
+    "",
+    "_Fix these (or get explicit human agreement to drop/re-bucket). This is the only checklist that blocks merge._",
+    ""
+  ];
 
   const before = byBucket.get("before_merge") ?? [];
   const worth = byBucket.get("worth_fixing") ?? [];
   const optional = byBucket.get("optional") ?? [];
   const backlog = byBucket.get("not_this_pr") ?? [];
 
-  lines.push("### Required before push", "");
   if (before.length === 0 && result.unresolved.length === 0) {
-    lines.push("None.", "");
+    lines.push("None — negotiation is clear on blockers.", "");
   } else {
     for (const item of before) {
       lines.push(`- [ ] ${oneLiner(item)}`, "");
@@ -231,7 +273,14 @@ function renderGoNoGoChecklist(result: NegotiationResult): string[] {
     }
   }
 
-  lines.push("### Recommended (same PR if cheap)", "");
+  lines.push(
+    "### Future work — does **not** hold negotiation",
+    "",
+    "_Keep these visible so nothing is lost. Do not re-litigate them in this PR loop unless the team promotes an item to `before_merge`._",
+    ""
+  );
+
+  lines.push("#### Worth fixing later (same area)", "");
   if (worth.length === 0) {
     lines.push("None.", "");
   } else {
@@ -240,7 +289,7 @@ function renderGoNoGoChecklist(result: NegotiationResult): string[] {
     }
   }
 
-  lines.push("### Optional / take or leave", "");
+  lines.push("#### Optional polish", "");
   if (optional.length === 0) {
     lines.push("None.", "");
   } else {
@@ -249,7 +298,7 @@ function renderGoNoGoChecklist(result: NegotiationResult): string[] {
     }
   }
 
-  lines.push("### File separately — do not block this PR", "");
+  lines.push("#### File separately (not this PR)", "");
   if (backlog.length === 0) {
     lines.push("None.", "");
   } else {
@@ -313,8 +362,15 @@ function groupByBucket(items: PartitionedFinding[]): Map<FindingBucket | "unknow
   return map;
 }
 
-function renderBucketed(title: string, items: PartitionedFinding[]): string[] {
+function renderBucketed(
+  title: string,
+  items: PartitionedFinding[],
+  intro?: string
+): string[] {
   const lines = [`## ${title}`, ""];
+  if (intro) {
+    lines.push(`_${intro}_`, "");
+  }
   if (items.length === 0) {
     return [...lines, "None.", ""];
   }
@@ -436,16 +492,21 @@ export function synthesizeDecisionSummary(
   unresolvedCount: number
 ): string {
   const counts = countByBucket(accepted);
+  const future =
+    (counts.worth_fixing ?? 0) + (counts.optional ?? 0) + (counts.not_this_pr ?? 0);
   const parts = [
-    `Accepted by bucket: before_merge=${counts.before_merge}, worth_fixing=${counts.worth_fixing}, optional=${counts.optional}, not_this_pr=${counts.not_this_pr}.`,
-    unresolvedCount > 0 ? `Unresolved: ${unresolvedCount}.` : "Unresolved: 0."
+    `Negotiation blockers (before_merge)=${counts.before_merge}; future_work=${future} (worth_fixing=${counts.worth_fixing}, optional=${counts.optional}, not_this_pr=${counts.not_this_pr}).`,
+    unresolvedCount > 0
+      ? `Unresolved: ${unresolvedCount} (also holds negotiation).`
+      : "Unresolved: 0.",
+    "Only before_merge and unresolved hold merge; future work does not."
   ];
   const before = accepted.filter(
     (a) => "bucket" in a.finding && a.finding.bucket === "before_merge"
   );
   if (before.length > 0) {
     parts.push(
-      "Before merge: " +
+      "Blockers: " +
         before
           .map((a) => ("id" in a.finding ? a.finding.id : "?"))
           .join(", ") +

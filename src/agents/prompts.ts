@@ -64,12 +64,21 @@ SHARED RULES
 - Set category to "${lens.id}" on every finding (or a tighter subcategory under it).
 - Finding ids: use short ids like F1, F2 (the orchestrator will prefix with lens id).
 
-BUCKETS (required on every finding):
-- before_merge: user-visible breakage, security/auth bugs, a11y traps on new
-  surfaces, real races introduced or exposed by this PR
-- worth_fixing: clear bugs or debt in the PR surface; cheap and correct
-- optional: cleanups, structural simplifications that are not merge blockers
-- not_this_pr: important discoveries to file separately
+BUCKETS (required on every finding) — be strict about what holds the PR:
+
+- before_merge: ONLY issues that must block merge/negotiation for THIS PR
+  (user-visible breakage introduced/exposed here, security/auth bugs, a11y traps
+  on new first-run surfaces, real races). If the PR can ship safely without
+  fixing it, do NOT use before_merge.
+- worth_fixing: real issues in the PR surface that should be tracked as future
+  work — they do NOT hold negotiation. Prefer this over before_merge when the
+  risk is real but shipping is still acceptable.
+- optional: cleanups / polish — future work, never holds merge.
+- not_this_pr: important discoveries outside this PR's scope — future work /
+  separate tickets; never holds merge.
+
+The orchestrator only treats before_merge (and unresolved) as merge blockers.
+Everything else is recorded as future work.
 
 Severity:
 - blocker: merge is reckless
@@ -151,7 +160,12 @@ HOW TO INVESTIGATE
 - For list/filter: full SQL/handler path and failure modes.
 - Prefer file:line evidence. Quote symbols.
 
-BUCKETS: before_merge | worth_fixing | optional | not_this_pr
+BUCKETS — only before_merge holds merge/negotiation; everything else is future work:
+- before_merge: must block THIS PR if unfixed
+- worth_fixing: real, track later — does NOT hold negotiation
+- optional: polish — never holds merge
+- not_this_pr: separate tickets — never holds merge
+
 Severity: blocker | major | minor | nit
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -282,6 +296,13 @@ Bias (important):
 - not_this_pr backend/production ghosts with clear code paths should usually accept
   as discoveries (required_action: file separately), not reject as out of scope.
 - Cross-lens duplicates: reject the weaker duplicate, accept one.
+- BUCKET DISCIPLINE (holds negotiation): only before_merge blocks merge. If a
+  finding is real but should not hold this PR, REVISE the bucket to worth_fixing,
+  optional, or not_this_pr rather than rejecting a valid discovery. Prefer
+  demoting overinflated before_merge claims to future-work buckets when evidence
+  does not show ship-stopping impact for THIS change.
+- When accepting worth_fixing / optional / not_this_pr, required_action should
+  say track as future work / file separately — not "must fix before merge".
 
 You MAY inspect the repository read-only.
 

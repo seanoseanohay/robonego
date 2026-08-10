@@ -339,16 +339,14 @@ function computeOutcome(
     return "needs_human";
   }
 
+  // Only before_merge holds the negotiation / merge decision.
+  // worth_fixing, optional, and not_this_pr are future work — reported, not blocking.
   const stillBlocking = accepted.some((item) => {
     if (!("bucket" in item.finding) || !item.finding.bucket) {
+      // Unknown bucket: treat as blocking so we do not silently ship ambiguity.
       return true;
     }
-    const bucket = item.finding.bucket;
-    // Discoveries / optional cleanups do not block merge by themselves.
-    if (bucket === "not_this_pr" || bucket === "optional") {
-      return false;
-    }
-    if (bucket !== "before_merge" && bucket !== "worth_fixing") {
+    if (item.finding.bucket !== "before_merge") {
       return false;
     }
     const id = "id" in item.finding ? item.finding.id : "";
