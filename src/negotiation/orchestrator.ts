@@ -172,14 +172,14 @@ export async function negotiate(
 
       if (selection.selected.length > 0) {
         console.error(
-          `robotneg: implementer (--fix) — ${selection.selected.length} finding(s) under guards`
+          `robonego: implementer (--fix) — ${selection.selected.length} finding(s) under guards`
         );
         for (const f of selection.selected) {
-          console.error(`robotneg:   → fix ${f.id} [${f.bucket}/${f.severity}]`);
+          console.error(`robonego:   → fix ${f.id} [${f.bucket}/${f.severity}]`);
         }
         if (selection.skipped.length > 0) {
           console.error(
-            `robotneg:   (skipped ${selection.skipped.length} accepted by guards — see report)`
+            `robonego:   (skipped ${selection.skipped.length} accepted by guards — see report)`
           );
         }
 
@@ -199,7 +199,7 @@ export async function negotiate(
 
         appliedAny = implementer.applied.some((a) => a.status === "applied");
         console.error(
-          `robotneg: implementer done — applied=${implementer.applied.filter((a) => a.status === "applied").length} skipped=${implementer.applied.filter((a) => a.status === "skipped").length} failed=${implementer.applied.filter((a) => a.status === "failed").length}`
+          `robonego: implementer done — applied=${implementer.applied.filter((a) => a.status === "applied").length} skipped=${implementer.applied.filter((a) => a.status === "skipped").length} failed=${implementer.applied.filter((a) => a.status === "failed").length}`
         );
 
         if (stateDir) {
@@ -385,12 +385,12 @@ async function runThermoCritics(
   }
 ): Promise<CriticOutput> {
   console.error(
-    `robotneg: thermo multi-angle critic — ${lenses.length} lenses in parallel: ${lenses.map((l) => l.id).join(", ")}`
+    `robonego: thermo multi-angle critic — ${lenses.length} lenses in parallel: ${lenses.map((l) => l.id).join(", ")}`
   );
 
   const settled = await Promise.all(
     lenses.map(async (lens): Promise<LensCriticResult> => {
-      console.error(`robotneg:   → lens ${lens.id} (${lens.oneLiner})`);
+      console.error(`robonego:   → lens ${lens.id} (${lens.oneLiner})`);
       const output = await runCodexJson(
         ctx.repo,
         criticPrompt(ctx, {
@@ -402,7 +402,7 @@ async function runThermoCritics(
         options.model,
         options.timeoutMs
       );
-      console.error(`robotneg:   ← lens ${lens.id}: ${output.findings.length} finding(s)`);
+      console.error(`robonego:   ← lens ${lens.id}: ${output.findings.length} finding(s)`);
       if (options.stateDir) {
         await saveRoundArtifact(options.stateDir, 0, `critic-${lens.id}`, output);
       }
@@ -411,7 +411,7 @@ async function runThermoCritics(
   );
 
   const merged = mergeLensCriticOutputs(settled);
-  console.error(`robotneg: thermo merge → ${merged.findings.length} finding(s) total`);
+  console.error(`robonego: thermo merge → ${merged.findings.length} finding(s) total`);
   return merged;
 }
 

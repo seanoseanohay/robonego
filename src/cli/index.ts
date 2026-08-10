@@ -32,31 +32,31 @@ async function main(): Promise<number> {
     throw new Error("--rounds must be at least 1");
   }
   if (args.fix && args.rounds < 2) {
-    console.error("robotneg: --fix usually needs --rounds >= 2 (fix then re-review); bumping to 2");
+    console.error("robonego: --fix usually needs --rounds >= 2 (fix then re-review); bumping to 2");
     args.rounds = 2;
   }
 
   const ctx = await collectContext(args.repo, args.target, args.base);
-  console.error(`robotneg: reviewing ${ctx.target}`);
-  console.error(`robotneg: repo ${ctx.repo}`);
+  console.error(`robonego: reviewing ${ctx.target}`);
+  console.error(`robonego: repo ${ctx.repo}`);
   if (ctx.changedFiles) {
     const n = ctx.changedFiles.split("\n").filter(Boolean).length;
-    console.error(`robotneg: ${n} changed file(s)`);
+    console.error(`robonego: ${n} changed file(s)`);
   }
   if (args.mode === "thermo") {
-    console.error("robotneg: thorough multi-angle review (thermo — always default)");
+    console.error("robonego: thorough multi-angle review (thermo — always default)");
   } else {
-    console.error("robotneg: mode single/quick (shallow one-pass; not recommended)");
+    console.error("robonego: mode single/quick (shallow one-pass; not recommended)");
   }
   if (args.fix) {
     console.error(
-      `robotneg: fix stage ON — buckets=[${args.fixBuckets.join(",")}] max=${args.fixMax} minConfidence=${args.fixMinConfidence}`
+      `robonego: fix stage ON — buckets=[${args.fixBuckets.join(",")}] max=${args.fixMax} minConfidence=${args.fixMinConfidence}`
     );
     console.error(
-      "robotneg: WARNING: --fix mutates the local worktree (workspace-write). Use a clean branch/worktree."
+      "robonego: WARNING: --fix mutates the local worktree (workspace-write). Use a clean branch/worktree."
     );
   }
-  console.error(`robotneg: max rounds ${args.rounds}`);
+  console.error(`robonego: max rounds ${args.rounds}`);
 
   const stateDir =
     args.stateDir ??
@@ -81,9 +81,9 @@ async function main(): Promise<number> {
   });
 
   const reportPath = await writeReport(ctx, result, args.out);
-  console.error(`robotneg: outcome ${result.outcome}`);
+  console.error(`robonego: outcome ${result.outcome}`);
   console.error(
-    `robotneg: accepted=${result.accepted.length} rejected=${result.rejected.length} unresolved=${result.unresolved.length}`
+    `robonego: accepted=${result.accepted.length} rejected=${result.rejected.length} unresolved=${result.unresolved.length}`
   );
   console.log(reportPath);
   return result.outcome === "good_to_merge" ? 0 : 2;
@@ -192,7 +192,9 @@ function sanitize(target: string): string {
 
 function printHelp(): void {
   const lensList = REVIEW_LENSES.map((l) => `    ${l.id.padEnd(12)} ${l.oneLiner}`).join("\n");
-  console.log(`Usage: robotneg [target] [options]
+  console.log(`Usage: robonego [target] [options]
+
+  (alias: robotneg)
 
 Thermonuclear Codex-backed PR negotiation: multi-angle Critic lenses + Judge,
 optional guarded Implementer (--fix), sticky memory, multi-round.

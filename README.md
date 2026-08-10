@@ -39,26 +39,29 @@ A single critic with ten lenses in one prompt still **skims**. Thermonuclear mod
 npm install
 npm run build
 
+# Install CLI on PATH (primary command is robonego; robotneg is a legacy alias)
+npm link
+
 # GitHub PR
-node dist/cli/index.js https://github.com/OWNER/REPO/pull/123 --repo /path/to/repo
+robonego https://github.com/OWNER/REPO/pull/123 --repo /path/to/repo
 
 # Local branch vs main
-node dist/cli/index.js --repo /path/to/repo --base main
+robonego --repo /path/to/repo --base main
 
 # Multi-round with sticky memory (default state under robotneg-reports/state/...)
-node dist/cli/index.js 123 --repo /path/to/repo --rounds 3
+robonego 123 --repo /path/to/repo --rounds 3
 
 # Intentional shallow skim only (not recommended)
-node dist/cli/index.js 123 --repo /path/to/repo --quick
+robonego 123 --repo /path/to/repo --quick
 
 # Subset of lenses (still multi-angle, just fewer specialists)
-node dist/cli/index.js 123 --repo /path/to/repo --lenses correctness,security,thermo
+robonego 123 --repo /path/to/repo --lenses correctness,security,thermo
 
 # Review + guarded fix round (mutates local worktree; be on the PR branch)
-node dist/cli/index.js 123 --repo /path/to/repo --fix --rounds 3
+robonego 123 --repo /path/to/repo --fix --rounds 3
 
 # Also auto-fix worth_fixing (still never not_this_pr)
-node dist/cli/index.js 123 --repo /path/to/repo --fix --fix-buckets before_merge,worth_fixing
+robonego 123 --repo /path/to/repo --fix --fix-buckets before_merge,worth_fixing
 ```
 
 Dev:
